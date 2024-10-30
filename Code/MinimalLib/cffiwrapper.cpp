@@ -19,6 +19,7 @@
 #include <GraphMol/SmilesParse/SmilesParse.h>
 #include <GraphMol/SmilesParse/SmilesWrite.h>
 #include <GraphMol/SmilesParse/SmartsWrite.h>
+#include <GraphMol/SmilesParse/SmilesJSONParsers.h>
 #include <GraphMol/FileParsers/FileParsers.h>
 #include <GraphMol/MolDraw2D/MolDraw2D.h>
 #include <GraphMol/MolDraw2D/MolDraw2DSVG.h>
@@ -130,11 +131,11 @@ std::string cxsmiles_helper(const char *pkl, size_t pkl_sz,
   }
   auto params = smiles_helper(details_json);
   auto mol = mol_from_pkl(pkl, pkl_sz);
-  SmilesWrite::CXSmilesFields cxSmilesFields =
-      SmilesWrite::CXSmilesFields::CX_ALL;
-  RestoreBondDirOption restoreBondDirs = RestoreBondDirOptionClear;
+  std::uint32_t cxSmilesFields = SmilesWrite::CXSmilesFields::CX_ALL;
+  unsigned int restoreBondDirs = RestoreBondDirOptionClear;
   updateCXSmilesFieldsFromJSON(cxSmilesFields, restoreBondDirs, details_json);
-  return MolToCXSmiles(mol, params, cxSmilesFields, restoreBondDirs);
+  return MolToCXSmiles(mol, params, cxSmilesFields,
+                       static_cast<RestoreBondDirOption>(restoreBondDirs));
 }
 }  // namespace
 extern "C" char *get_smiles(const char *pkl, size_t pkl_sz,
@@ -238,7 +239,8 @@ extern "C" char *get_inchi(const char *pkl, size_t pkl_sz,
   auto mol = mol_from_pkl(pkl, pkl_sz);
   ExtraInchiReturnValues rv;
   auto options = MinimalLib::parse_inchi_options(details_json);
-  return str_to_c(MolToInchi(mol, rv, !options.empty() ? options.c_str() : nullptr));
+  return str_to_c(
+      MolToInchi(mol, rv, !options.empty() ? options.c_str() : nullptr));
 }
 
 extern "C" char *get_inchi_for_molblock(const char *ctab,
@@ -248,7 +250,8 @@ extern "C" char *get_inchi_for_molblock(const char *ctab,
   }
   ExtraInchiReturnValues rv;
   auto options = MinimalLib::parse_inchi_options(details_json);
-  return str_to_c(MolBlockToInchi(ctab, rv, !options.empty() ? options.c_str() : nullptr));
+  return str_to_c(
+      MolBlockToInchi(ctab, rv, !options.empty() ? options.c_str() : nullptr));
 }
 
 extern "C" char *get_inchikey_for_inchi(const char *inchi) {
