@@ -414,6 +414,7 @@ bool EmbeddedFrag::matchToTemplate(const RDKit::INT_VECT &ringSystemAtoms,
   // only look for an exact match to the ring system because our method of
   // completing rings from a template isn't reliably better than not using
   // a template at all
+
   if (!coordinate_templates.hasTemplateOfSize(ringSystemAtoms.size())) {
     return false;
   }
@@ -430,6 +431,8 @@ bool EmbeddedFrag::matchToTemplate(const RDKit::INT_VECT &ringSystemAtoms,
   for (auto &at : rs_mol.atoms()) {
     if (!rs_atoms.test(at->getIdx())) {
       at->setAtomicNum(DUMMY_ATOMIC_NUM);
+    } else {  // set all ring system atoms to carbon for the template match
+      at->setAtomicNum(6);
     }
   }
   auto numBonds = rs_mol.getNumBonds();
@@ -445,16 +448,26 @@ bool EmbeddedFrag::matchToTemplate(const RDKit::INT_VECT &ringSystemAtoms,
   std::shared_ptr<RDKit::ROMol> template_mol(nullptr);
   for (const auto &mol :
        coordinate_templates.getMatchingTemplates(ringSystemAtoms.size())) {
+    int template_bonds = 0;
+    for (auto bnd : mol->bonds()) {
+      // only count bonds to carbon atoms, to exclude the ones to dummy atoms
+      if (bnd->getBeginAtom()->getAtomicNum() == 6 &&
+          bnd->getEndAtom()->getAtomicNum() == 6) {
+        ++template_bonds;
+      }
+    }
     // To reduce how often we have to do substructure matches, check ring info
     // and bond count first
-    if (mol->getNumBonds() != numBonds) {
+    if (template_bonds != numBonds) {
       continue;
     } else if (mol->getRingInfo()->numRings() != ring_count) {
       continue;
     }
+
     // also check if the mol atoms have the same connectivity as the template
 #ifdef _MSC_VER
-    // MSVC++ doesn't like implicitly capturing constexpr variables, this is a bug
+    // MSVC++ doesn't like implicitly capturing constexpr variables, this is a
+    // bug
     auto degreeCounts = [DUMMY_ATOMIC_NUM](const RDKit::ROMol &mol) {
 #else
     // clang generates warnings if you explicitly capture a constexpr variable
@@ -462,12 +475,12 @@ bool EmbeddedFrag::matchToTemplate(const RDKit::INT_VECT &ringSystemAtoms,
 #endif
       std::array<int, 5> degrees_count({0, 0, 0, 0, 0});
       for (auto atom : mol.atoms()) {
-        if (atom->getAtomicNum() == DUMMY_ATOMIC_NUM) {
+        if (atom->getAtomicNum() != 6) {
           continue;
         }
         auto degree = 0u;
         for (auto nbr : mol.atomNeighbors(atom)) {
-          if (nbr->getAtomicNum() != DUMMY_ATOMIC_NUM) {
+          if (nbr->getAtomicNum() == 6) {
             ++degree;
             if (degree == 4) {
               break;
@@ -481,6 +494,7 @@ bool EmbeddedFrag::matchToTemplate(const RDKit::INT_VECT &ringSystemAtoms,
     if (degreeCounts(rs_mol) != degreeCounts(*mol)) {
       continue;
     }
+
     RDKit::SubstructMatchParameters params;
     params.maxMatches = 1;
     auto matches = RDKit::SubstructMatch(rs_mol, *mol, params);

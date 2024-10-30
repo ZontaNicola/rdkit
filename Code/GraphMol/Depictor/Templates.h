@@ -31,7 +31,7 @@ class RDKIT_DEPICTOR_EXPORT CoordinateTemplates {
           be constructed.
 
    */
-  static CoordinateTemplates& getRingSystemTemplates() {
+  static CoordinateTemplates &getRingSystemTemplates() {
     static CoordinateTemplates template_mols;
     return template_mols;
   }
@@ -43,13 +43,13 @@ class RDKIT_DEPICTOR_EXPORT CoordinateTemplates {
     return false;
   }
 
-  const std::vector<std::shared_ptr<RDKit::ROMol>>& getMatchingTemplates(
+  const std::vector<std::shared_ptr<RDKit::ROMol>> &getMatchingTemplates(
       unsigned int atomCount) {
     return m_templates[atomCount];
   }
 
-  void setRingSystemTemplates(const std::string& templatePath);
-  void addRingSystemTemplates(const std::string& templatePath);
+  void setRingSystemTemplates(const std::string &templatePath);
+  void addRingSystemTemplates(const std::string &templatePath);
 
   //! check if a template is considered valid
   /*
@@ -63,24 +63,31 @@ class RDKIT_DEPICTOR_EXPORT CoordinateTemplates {
         - consists of only 1 fragment
 
    */
-  static void assertValidTemplate(RDKit::ROMol& mol, const std::string& smiles);
+  static void assertValidTemplate(RDKit::ROMol &mol, const std::string &smiles);
 
   void loadDefaultTemplates() {
     clearTemplates();
-    // load default templates into m_templates map by atom count
-    for (const auto& smiles : TEMPLATE_SMILES) {
+    // load default templates into m_templates map by atom count. Note that we
+    // only count carbons to exclude attachment point dummy atoms
+    for (const auto &smiles : TEMPLATE_SMILES) {
       std::shared_ptr<RDKit::ROMol> mol(RDKit::SmilesToMol(smiles));
-      m_templates[mol->getNumAtoms()].push_back(mol);
+      unsigned int num_carbons = 0;
+      for (const auto atom : mol->atoms()) {
+        if (atom->getAtomicNum() == 6) {
+          ++num_carbons;
+        }
+      }
+      m_templates[num_carbons].push_back(mol);
     }
   }
 
  private:
   CoordinateTemplates() { loadDefaultTemplates(); }
-  CoordinateTemplates(const CoordinateTemplates&) = delete;
-  CoordinateTemplates& operator=(const CoordinateTemplates&) = delete;
+  CoordinateTemplates(const CoordinateTemplates &) = delete;
+  CoordinateTemplates &operator=(const CoordinateTemplates &) = delete;
 
   void clearTemplates() {
-    for (auto& [atom_cout, romols] : m_templates) {
+    for (auto &[atom_cout, romols] : m_templates) {
       romols.clear();
     }
     m_templates.clear();
@@ -89,9 +96,9 @@ class RDKIT_DEPICTOR_EXPORT CoordinateTemplates {
   ~CoordinateTemplates() { clearTemplates(); }
 
   void loadTemplatesFromPath(
-      const std::string& templatePath,
+      const std::string &templatePath,
       std::unordered_map<
-          unsigned int, std::vector<std::shared_ptr<RDKit::ROMol>>>& templates);
+          unsigned int, std::vector<std::shared_ptr<RDKit::ROMol>>> &templates);
 
   std::unordered_map<unsigned int, std::vector<std::shared_ptr<RDKit::ROMol>>>
       m_templates;
