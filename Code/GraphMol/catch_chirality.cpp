@@ -1640,6 +1640,49 @@ TEST_CASE("SHARED-12489: prefer wedging inner ring bonds",
     CHECK(getWedgeBondIndices(*mol) == std::vector<int>{0, 3, 4, 6});
   }
 
+  SECTION("spiro candidates are ranked in their own fused ring systems") {
+    RWMol mol;
+    for (unsigned int i = 0; i < 9; ++i) {
+      const auto atomIdx = mol.addAtom();
+      mol.getAtomWithIdx(atomIdx)->setAtomicNum(6);
+    }
+    mol.getAtomWithIdx(0)->setChiralTag(Atom::CHI_TETRAHEDRAL_CW);
+
+    // Add the simple spiro ring first so its bonds have lower indices than the
+    // bridged component. This caught the previous insertion-order dependency.
+    mol.addBond(0, 6, Bond::SINGLE);
+    mol.addBond(6, 7, Bond::SINGLE);
+    mol.addBond(7, 8, Bond::SINGLE);
+    mol.addBond(8, 0, Bond::SINGLE);
+
+    // These two rings share the path 1-0-3. Bonds 4 and 7, which meet at the
+    // stereogenic spiro atom 0, are therefore the inner bridge bonds.
+    mol.addBond(0, 1, Bond::SINGLE);
+    mol.addBond(1, 2, Bond::SINGLE);
+    mol.addBond(2, 3, Bond::SINGLE);
+    mol.addBond(3, 0, Bond::SINGLE);
+    mol.addBond(1, 4, Bond::SINGLE);
+    mol.addBond(4, 5, Bond::SINGLE);
+    mol.addBond(5, 3, Bond::SINGLE);
+    mol.updatePropertyCache(false);
+    MolOps::findSSSR(mol);
+    add2DConformer(mol, {{0.0, 0.0, 0.0},
+                         {1.0, 1.0, 0.0},
+                         {2.0, 0.0, 0.0},
+                         {1.0, -1.0, 0.0},
+                         {2.0, 1.5, 0.0},
+                         {2.0, -1.5, 0.0},
+                         {-1.0, 1.0, 0.0},
+                         {-2.0, 0.0, 0.0},
+                         {-1.0, -1.0, 0.0}});
+
+    const auto wedgeBonds = Chirality::pickBondsToWedge(mol);
+    REQUIRE(wedgeBonds.size() == 1);
+    const auto selectedBond = mol.getBondWithIdx(wedgeBonds.begin()->first);
+    const auto selectedNeighbor = selectedBond->getOtherAtomIdx(0);
+    CHECK((selectedNeighbor == 1 || selectedNeighbor == 3));
+  }
+
   SECTION("a one-bond fused junction retains perimeter wedging") {
     auto mol = "FC1C[C@@H]2CC(Cl)[C@H]12"_smiles;
     REQUIRE(mol);
