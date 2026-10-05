@@ -59,16 +59,15 @@ struct RingSystemInfo {
   bool hasBridgeWithInteriorAtom = false;
 };
 
-// Return true when the rings share adjacent bonds. The atom joining those
-// bonds is inside the shared path, unlike either atom of a single fused bond.
+// RingInfo identifies rings that share at least one bond, but it does not
+// distinguish a single fused bond from a longer shared path. Return true when
+// two rings share adjacent bonds: their common atom is an interior bridge atom.
 bool ringsSharePathWithInteriorAtom(
-    const ROMol &mol, const INT_VECT &firstRing, const INT_VECT &secondRing,
-    const boost::dynamic_bitset<> &ringSystemBonds) {
+    const ROMol &mol, const INT_VECT &firstRing, const INT_VECT &secondRing) {
   std::vector<unsigned int> sharedBondDegree(mol.getNumAtoms());
   for (const auto bondIdx : firstRing) {
-    if (!ringSystemBonds[bondIdx] ||
-        std::find(secondRing.begin(), secondRing.end(), bondIdx) ==
-            secondRing.end()) {
+    if (std::find(secondRing.begin(), secondRing.end(), bondIdx) ==
+        secondRing.end()) {
       continue;
     }
     const auto bond = mol.getBondWithIdx(bondIdx);
@@ -80,73 +79,91 @@ bool ringsSharePathWithInteriorAtom(
   return false;
 }
 
+// Return all rings in the fused component containing bondIdx. A bond can be a
+// member of multiple rings, so start the traversal from every containing ring.
+std::vector<unsigned int> getFusedRingSystem(RingInfo &ringInfo,
+                                             unsigned int bondIdx) {
+  const auto &bondRings = ringInfo.bondRings();
+  boost::dynamic_bitset<> visitedRings(bondRings.size());
+  std::vector<unsigned int> ringsToVisit;
+  for (const auto ringIdx : ringInfo.bondMembers(bondIdx)) {
+    ringsToVisit.push_back(ringIdx);
+  }
+
+  std::vector<unsigned int> result;
+  while (!ringsToVisit.empty()) {
+    const auto ringIdx = ringsToVisit.back();
+    ringsToVisit.pop_back();
+    if (visitedRings[ringIdx]) {
+      continue;
+    }
+    visitedRings.set(ringIdx);
+    result.push_back(ringIdx);
+    for (const auto neighborIdx : ringInfo.fusedRingNeighbors(ringIdx)) {
+      ringsToVisit.push_back(neighborIdx);
+    }
+  }
+  return result;
+}
+
+bool ringSystemHasBridgeWithInteriorAtom(
+    const ROMol &mol, RingInfo &ringInfo,
+    const std::vector<unsigned int> &ringIndices) {
+  const auto &bondRings = ringInfo.bondRings();
+  for (const auto ringIdx : ringIndices) {
+    // fusedRingNeighbors() is lazy and cached by RingInfo. Checking only those
+    // pairs avoids repeating RingInfo's fused-ring discovery here.
+    for (const auto neighborIdx : ringInfo.fusedRingNeighbors(ringIdx)) {
+      if (neighborIdx <= ringIdx) {
+        continue;  // inspect each pair once
+      }
+      if (ringsSharePathWithInteriorAtom(mol, bondRings[ringIdx],
+                                         bondRings[neighborIdx])) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+RDGeom::Point3D getRingSystemCenter(
+    const ROMol &mol, const RingInfo &ringInfo,
+    const std::vector<unsigned int> &ringIndices, const Conformer &conf) {
+  // An atom shared by multiple rings contributes only once to the center.
+  boost::dynamic_bitset<> ringAtoms(mol.getNumAtoms());
+  const auto &atomRings = ringInfo.atomRings();
+  for (const auto ringIdx : ringIndices) {
+    for (const auto atomIdx : atomRings[ringIdx]) {
+      ringAtoms.set(atomIdx);
+    }
+  }
+  PRECONDITION(ringAtoms.any(), "a ring system must contain atoms");
+
+  RDGeom::Point3D center;
+  for (auto atomIdx = ringAtoms.find_first();
+       atomIdx != boost::dynamic_bitset<>::npos;
+       atomIdx = ringAtoms.find_next(atomIdx)) {
+    auto pos = conf.getAtomPos(atomIdx);
+    pos.z = 0.0;
+    center += pos;
+  }
+  return center / static_cast<double>(ringAtoms.count());
+}
+
 // Collect the geometric and topological properties used to rank wedge bonds
 // in the connected ring system containing bondIdx.
 RingSystemInfo getRingSystemInfo(const ROMol &mol, unsigned int bondIdx,
                                  const Conformer *conf) {
   PRECONDITION(conf && !conf->is3D(), "a 2D conformer is required");
-  const auto bond = mol.getBondWithIdx(bondIdx);
-  const auto ringInfo = mol.getRingInfo();
+  auto ringInfo = mol.getRingInfo();
   PRECONDITION(ringInfo->numBondRings(bondIdx), "bond is not in a ring");
 
-  // Find the connected ring system containing the bond. Using ring bonds for
-  // the traversal excludes substituents, which could otherwise move the
-  // center away from the depiction's ring system.
-  boost::dynamic_bitset<> visited(mol.getNumAtoms());
-  boost::dynamic_bitset<> ringSystemBonds(mol.getNumBonds());
-  std::vector<unsigned int> atomsToVisit{bond->getBeginAtomIdx()};
-  RDGeom::Point3D center;
-  unsigned int numRingAtoms = 0;
-  while (!atomsToVisit.empty()) {
-    const auto atomIdx = atomsToVisit.back();
-    atomsToVisit.pop_back();
-    if (visited[atomIdx]) {
-      continue;
-    }
-    visited.set(atomIdx);
-    auto pos = conf->getAtomPos(atomIdx);
-    pos.z = 0.0;
-    center += pos;
-    ++numRingAtoms;
-
-    const auto atom = mol.getAtomWithIdx(atomIdx);
-    for (const auto ringBond : mol.atomBonds(atom)) {
-      if (ringInfo->numBondRings(ringBond->getIdx())) {
-        ringSystemBonds.set(ringBond->getIdx());
-        atomsToVisit.push_back(ringBond->getOtherAtomIdx(atomIdx));
-      }
-    }
+  const auto ringIndices = getFusedRingSystem(*ringInfo, bondIdx);
+  if (!ringSystemHasBridgeWithInteriorAtom(mol, *ringInfo, ringIndices)) {
+    // The center is only used to rank inner bonds in bridged systems.
+    return {};
   }
-  center /= static_cast<double>(numRingAtoms);
-
-  // Two rings sharing one bond form a fused junction. Two adjacent shared
-  // bonds form a path with an interior atom, so the ring system is bridged and
-  // has an inner bond that can be preferred for wedging.
-  std::vector<unsigned int> ringSystemRingIndices;
-  const auto &bondRings = ringInfo->bondRings();
-  for (unsigned int ringIdx = 0; ringIdx < bondRings.size(); ++ringIdx) {
-    if (std::any_of(bondRings[ringIdx].begin(), bondRings[ringIdx].end(),
-                    [&ringSystemBonds](int ringBondIdx) {
-                      return ringSystemBonds[ringBondIdx];
-                    })) {
-      ringSystemRingIndices.push_back(ringIdx);
-    }
-  }
-  bool hasBridgeWithInteriorAtom = false;
-  for (size_t first = 0;
-       first < ringSystemRingIndices.size() && !hasBridgeWithInteriorAtom;
-       ++first) {
-    for (size_t second = first + 1; second < ringSystemRingIndices.size();
-         ++second) {
-      if (ringsSharePathWithInteriorAtom(
-              mol, bondRings[ringSystemRingIndices[first]],
-              bondRings[ringSystemRingIndices[second]], ringSystemBonds)) {
-        hasBridgeWithInteriorAtom = true;
-        break;
-      }
-    }
-  }
-  return {center, hasBridgeWithInteriorAtom};
+  return {getRingSystemCenter(mol, *ringInfo, ringIndices, *conf), true};
 }
 
 double bondMidpointDistanceToPoint(const ROMol &mol, unsigned int bondIdx,
