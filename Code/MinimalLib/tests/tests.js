@@ -3265,18 +3265,19 @@ function test_get_molblock_use_molblock_wedging() {
     2.5834   -2.7186    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
   2  1  1  1
   2  3  1  0
-  4  3  1  0
+  4  3  1  6
   4  5  1  0
   6  5  1  0
   6  7  1  1
   6  8  1  0
   8  9  1  1
   8  2  1  0
-  9  4  1  6
+  4  9  1  0
 M  END
 `;
     var mol = RDKitModule.get_mol(mb);
     assert(mol);
+    assert(mol.get_smiles() === 'N[C@H]1C[C@H]2C[C@@H]1[C@H](O)C2');
     var molCopy = RDKitModule.get_mol_copy(mol);
     assert(molCopy);
     var mbRDKitWedging = mol.get_molblock();

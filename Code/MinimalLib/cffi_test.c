@@ -3025,14 +3025,14 @@ void test_get_molblock_use_molblock_wedging() {
     2.5834   -2.7186    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n\
   2  1  1  1\n\
   2  3  1  0\n\
-  4  3  1  0\n\
+  4  3  1  6\n\
   4  5  1  0\n\
   6  5  1  0\n\
   6  7  1  1\n\
   6  8  1  0\n\
   8  9  1  1\n\
   8  2  1  0\n\
-  9  4  1  6\n\
+  4  9  1  0\n\
 M  END\n\
 ";
   char *mpkl;
@@ -3043,6 +3043,11 @@ M  END\n\
   char *mb_orig_wedging;
   mpkl = get_mol(mb, &mpkl_size, "");
   assert(mpkl && mpkl_size);
+  char *stereo_smiles = get_smiles(mpkl, mpkl_size, NULL);
+  assert(stereo_smiles);
+  assert(!strcmp(stereo_smiles,
+                 "N[C@H]1C[C@H]2C[C@@H]1[C@H](O)C2"));
+  free(stereo_smiles);
   mpkl_copy = malloc(mpkl_size);
   assert(mpkl_copy);
   memcpy(mpkl_copy, mpkl, mpkl_size);
