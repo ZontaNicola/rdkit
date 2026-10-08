@@ -517,7 +517,7 @@ int pickBondToWedgeImpl(
     for (auto &candidate : nbrScores) {
       const auto &candidateRings =
           ringInfo->bondMembers(candidate.bondIdx);
-      PRECONDITION(!candidateRings.empty(), "ring bond has no ring membership");
+      CHECK_INVARIANT(!candidateRings.empty(), "ring bond has no ring membership");
       const auto candidateRingIdx = candidateRings.front();
       auto ringSystem = std::find_if(
           ringSystems.begin(), ringSystems.end(),
