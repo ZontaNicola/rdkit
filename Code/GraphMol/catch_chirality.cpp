@@ -1640,7 +1640,7 @@ TEST_CASE("SHARED-12489: prefer wedging inner ring bonds",
     CHECK(getWedgeBondIndices(*mol) == std::vector<int>{0, 3, 4, 6});
   }
 
-  SECTION("spiro candidates are ranked in their own fused ring systems") {
+  SECTION("spiro candidates retain the established ranking") {
     RWMol mol;
     for (unsigned int i = 0; i < 9; ++i) {
       const auto atomIdx = mol.addAtom();
@@ -1648,8 +1648,8 @@ TEST_CASE("SHARED-12489: prefer wedging inner ring bonds",
     }
     mol.getAtomWithIdx(0)->setChiralTag(Atom::CHI_TETRAHEDRAL_CW);
 
-    // Add the simple spiro ring first so its bonds have lower indices than the
-    // bridged component. This caught the previous insertion-order dependency.
+    // Add the simple spiro ring first. The center-based ranking must not compare
+    // its candidates with candidates from the separate bridged component.
     mol.addBond(0, 6, Bond::SINGLE);
     mol.addBond(6, 7, Bond::SINGLE);
     mol.addBond(7, 8, Bond::SINGLE);
@@ -1678,9 +1678,7 @@ TEST_CASE("SHARED-12489: prefer wedging inner ring bonds",
 
     const auto wedgeBonds = Chirality::pickBondsToWedge(mol);
     REQUIRE(wedgeBonds.size() == 1);
-    const auto selectedBond = mol.getBondWithIdx(wedgeBonds.begin()->first);
-    const auto selectedNeighbor = selectedBond->getOtherAtomIdx(0);
-    CHECK((selectedNeighbor == 1 || selectedNeighbor == 3));
+    CHECK(wedgeBonds.begin()->first == 0);
   }
 
   SECTION("a one-bond fused junction retains perimeter wedging") {

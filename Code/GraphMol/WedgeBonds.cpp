@@ -13,8 +13,6 @@
 #include <sstream>
 #include <set>
 #include <algorithm>
-#include <iterator>
-#include <numeric>
 #include <tuple>
 #include <RDGeneral/utils.h>
 #include <RDGeneral/Invariant.h>
@@ -510,41 +508,40 @@ int pickBondToWedgeImpl(
       std::all_of(nbrScores.begin(), nbrScores.end(),
                   [](const auto &score) { return score.isRingBond; });
   if (allCandidatesAreRingBonds && conf && !conf->is3D()) {
-    // Candidates at a spiro atom can belong to different fused systems. Cache
-    // each system once and measure a candidate only against its own center.
-    std::vector<RingSystemInfo> ringSystems;
     const auto ringInfo = mol.getRingInfo();
-    for (auto &candidate : nbrScores) {
-      const auto &candidateRings =
-          ringInfo->bondMembers(candidate.bondIdx);
-      CHECK_INVARIANT(!candidateRings.empty(), "ring bond has no ring membership");
-      const auto candidateRingIdx = candidateRings.front();
-      auto ringSystem = std::find_if(
-          ringSystems.begin(), ringSystems.end(),
-          [candidateRingIdx](const auto &system) {
-            return std::find(system.ringIndices.begin(),
-                             system.ringIndices.end(),
-                             candidateRingIdx) != system.ringIndices.end();
-          });
-      if (ringSystem == ringSystems.end()) {
-        ringSystems.push_back(
-            getRingSystemInfo(mol, candidate.bondIdx, conf));
-        ringSystem = std::prev(ringSystems.end());
-      }
-      candidate.isInBridgedRingSystem =
-          ringSystem->hasBridgeWithInteriorAtom;
-      if (candidate.isInBridgedRingSystem) {
+    const auto ringSystem =
+        getRingSystemInfo(mol, nbrScores.front().bondIdx, conf);
+    const auto allCandidatesAreInRingSystem = std::all_of(
+        nbrScores.begin(), nbrScores.end(), [&](const auto &candidate) {
+          const auto &candidateRings =
+              ringInfo->bondMembers(candidate.bondIdx);
+          CHECK_INVARIANT(!candidateRings.empty(),
+                          "ring bond has no ring membership");
+          return std::any_of(
+              candidateRings.begin(), candidateRings.end(),
+              [&](const auto ringIdx) {
+                return std::find(ringSystem.ringIndices.begin(),
+                                 ringSystem.ringIndices.end(),
+                                 ringIdx) != ringSystem.ringIndices.end();
+              });
+        });
+
+    // Spiro atoms have candidates in more than one fused ring system. There is
+    // no common center for those systems, so retain the established scoring.
+    if (allCandidatesAreInRingSystem &&
+        ringSystem.hasBridgeWithInteriorAtom) {
+      for (auto &candidate : nbrScores) {
+        candidate.isInBridgedRingSystem = true;
         candidate.distanceToRingCenter = bondMidpointDistanceToPoint(
-            mol, candidate.bondIdx, conf, ringSystem->center);
+            mol, candidate.bondIdx, conf, ringSystem.center);
       }
     }
   }
   const auto minPr = std::min_element(
       nbrScores.begin(), nbrScores.end(),
       [](const auto &lhs, const auto &rhs) {
-        // Preserve the established scoring whenever a non-ring bond is
-        // available. When ring bonds are unavoidable, first prefer candidates
-        // in bridged systems over candidates in separate spiro systems.
+        // Preserve the established scoring unless all candidates belong to a
+        // single bridged ring system, where inner bonds are preferred.
         if (lhs.isInBridgedRingSystem != rhs.isInBridgedRingSystem) {
           return lhs.isInBridgedRingSystem;
         }

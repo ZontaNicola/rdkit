@@ -3282,6 +3282,16 @@ M  END
     assert(molCopy);
     var mbRDKitWedging = mol.get_molblock();
     assert(mbRDKitWedging !== mb);
+    assert(mbRDKitWedging.includes('  4  9  1  1') ||
+        mbRDKitWedging.includes('  4  9  1  6'));
+    assert(mbRDKitWedging.includes('  8  9  1  1') ||
+        mbRDKitWedging.includes('  8  9  1  6'));
+    assert(mbRDKitWedging.includes('  4  3  1  0'));
+    assert(mbRDKitWedging.includes('  8  2  1  0'));
+    assert(!mbRDKitWedging.includes('  9  4  1  1') &&
+        !mbRDKitWedging.includes('  9  4  1  6'));
+    assert(!mbRDKitWedging.includes('  9  8  1  1') &&
+        !mbRDKitWedging.includes('  9  8  1  6'));
     var mbOrigWedging = mol.get_molblock(JSON.stringify({useMolBlockWedging: true}));
     assert(mb === mbOrigWedging);
     var mbRDKitWedgingPostOrig = mol.get_molblock();

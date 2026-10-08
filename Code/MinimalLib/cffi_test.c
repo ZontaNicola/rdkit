@@ -3053,6 +3053,16 @@ M  END\n\
   memcpy(mpkl_copy, mpkl, mpkl_size);
   mb_rdkit_wedging = get_molblock(mpkl, mpkl_size, NULL);
   assert(strcmp(mb, mb_rdkit_wedging));
+  assert(strstr(mb_rdkit_wedging, "  4  9  1  1") ||
+         strstr(mb_rdkit_wedging, "  4  9  1  6"));
+  assert(strstr(mb_rdkit_wedging, "  8  9  1  1") ||
+         strstr(mb_rdkit_wedging, "  8  9  1  6"));
+  assert(strstr(mb_rdkit_wedging, "  4  3  1  0"));
+  assert(strstr(mb_rdkit_wedging, "  8  2  1  0"));
+  assert(!strstr(mb_rdkit_wedging, "  9  4  1  1") &&
+         !strstr(mb_rdkit_wedging, "  9  4  1  6"));
+  assert(!strstr(mb_rdkit_wedging, "  9  8  1  1") &&
+         !strstr(mb_rdkit_wedging, "  9  8  1  6"));
   mb_orig_wedging =
       get_molblock(mpkl, mpkl_size, "{\"useMolBlockWedging\":true}");
   assert(!memcmp(mpkl, mpkl_copy, mpkl_size));
